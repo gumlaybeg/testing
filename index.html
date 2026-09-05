@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>IRON LUNG: DEPTH SOLITUDE</title>
+    <style>
+        :root {
+            --bg-color: #050000;
+            --panel-color: #1a0a0a;
+            --text-color: #ff3333;
+            --text-dim: #881111;
+            --crt-scanline: rgba(0, 0, 0, 0.5);
+            --screen-glow: #ff0000;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- CRT EFFECT LAYER --- */
+        #crt-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+            z-index: 999;
+            box-shadow: inset 0 0 100px rgba(0,0,0,0.9);
+            animation: flicker 0.15s infinite;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.95; }
+            100% { opacity: 1; }
+        }
+
+        /* --- MAIN CONSOLE LAYOUT --- */
+        #console-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto 1fr;
+            gap: 10px;
+            width: 95%;
+            max-width: 1000px;
+            height: 95%;
+            padding: 15px;
+            background: var(--panel-color);
+            border: 4px solid #331111;
+            border-radius: 4px;
+            box-shadow: 0 0 20px rgba(50, 0, 0, 0.5);
+            position: relative;
+        }
+
+        /* Responsive adjust for Mobile Portrait */
+        @media (max-width: 768px) {
+            #console-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto 1fr;
+                overflow-y: auto;
+            }
+        }
+
+        .panel {
+            background: #000;
+            border: 2px solid #551111;
+            padding: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .label {
+            position: absolute;
+            top: 2px;
+            left: 5px;
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: #000;
+            padding: 0 4px;
+            z-index: 10;
+        }
+
+        /* --- MAIN VIEWSCREEN (The Photo) --- */
+        #viewscreen-panel {
+            grid-column: 1 / -1;
+            height: 40vh;
+            min-height: 200px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #080202;
+            border: 4px inset #330000;
+        }
+
+        canvas#game-view {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            /* The 'Iron Lung' aesthetic filter */
+            filter: contrast(1.2) brightness(0.8) sepia(1) hue-rotate(-50deg) saturate(3) blur(0.5px);
+            opacity: 0; /* Hidden until photo taken */
+            transition: opacity 0.2s;
+        }
+
+        #viewscreen-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        /* --- MAP & DATA --- */
+        #data-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.2rem;
+            border-bottom: 1px solid #331111;
+            padding: 5px 0;
+        }
+
+        .val { font-weight: bold; text-shadow: 0 0 5px var(--text-color); }
+
+        #map-panel {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #050101;
+        }
+
+        canvas#map-view {
+            width: 100%;
+            height: 100%;
+            max-height: 200px;
+            object-fit: contain;
+        }
+
+        /* --- CONTROLS --- */
+        #controls-panel {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #camera-btn {
+            background: #330000;
+            color: red;
+            border: 2px solid red;
+            padding: 15px 40px;
+            font-family: inherit;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 0 10px red;
+            transition: all 0.1s;
+            margin-bottom: 10px;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        #camera-btn:active {
+            background: #550000;
+            transform: scale(0.95);
+        }
+
+        #camera-btn:disabled {
+            background: #110000;
+            border-color: #440000;
+            color: #440000;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        .dpad {
+            display: grid;
+            grid-template-columns: 60px 60px 60px;
+            grid-template-rows: 60px 60px;
+            gap: 5px;
+        }
+
+        .d-btn {
+            background: #1a0a0a;
+            border: 1px solid #441111;
+            color: #ff5555;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            border-radius: 4px;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .d-btn:active, .d-btn.active { background: #441111; }
+        .d-up { grid-column: 2; grid-row: 1; }
+        .d-left { grid-column: 1; grid-row: 2; }
+        .d-down { grid-column: 2; grid-row: 2; }
+        .d-right { grid-column: 3; grid-row: 2; }
+
+        /* --- NOTIFICATIONS --- */
+        #log {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 90%;
+            max-width: 400px;
+            max-height: 150px; /* Taller for AI text */
+            overflow: hidden;
+            font-size: 12px;
+            color: var(--text-color);
+            pointer-events: none;
+            display: flex;
+            flex-direction: column-reverse;
+            text-shadow: 1px 1px 0 #000;
+            z-index: 100;
+            background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        .log-entry { margin-bottom: 4px; }
+        .log-ai { color: #ff8888; font-style: italic; border-left: 2px solid #ff8888; padding-left: 5px; }
+
+        #start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        h1 { margin: 0 0 20px 0; font-size: 2rem; color: red; text-shadow: 0 0 10px red; }
+        p { max-width: 600px; line-height: 1.5; color: #aaa; margin-bottom: 30px; }
+        
+        button.start-btn {
+            background: transparent;
+            color: white;
+            border: 1px solid white;
+            padding: 15px 30px;
+            font-family: inherit;
+            cursor: pointer;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+        }
+        button.start-btn:hover { background: white; color: black; }
+
+        /* Decorative Scan Line */
+        .scan-line {
+            width: 100%;
+            height: 5px;
+            background: rgba(255,0,0,0.3);
+            position: absolute;
+            top: 0;
+            animation: scan 3s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes scan {
+            0% { top: 0%; }
+            100% { top: 100%; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="crt-overlay"></div>
+
+    <div id="start-screen">
+        <h1>IRON LUNG: DEPTH SOLITUDE</h1>
+        <p>
+            OCEAN OF BLOOD - SECTOR 9<br><br>
+            Use the map and coordinates to navigate.<br>
+            You cannot see outside.<br>
+            Use the CAMERA to capture visual data.<br>
+            Find the ANOMALIES to complete the survey.<br><br>
+            <strong>✨ AI SYSTEMS ONLINE:</strong><br>
+            Gemini Neural Link engaged for anomaly analysis and voice synthesis.<br><br>
+            Controls: WASD / Arrows / On-Screen Buttons
+        </p>
+        <button class="start-btn" onclick="initGame()">INITIATE DIVE</button>
+    </div>
+
+    <div id="console-container">
+        <!-- Main View (The Photo) -->
+        <div id="viewscreen-panel" class="panel">
+            <div class="label">EXTERIOR CAMERA FEED</div>
+            <canvas id="game-view" width="320" height="200"></canvas>
+            <div id="viewscreen-overlay">NO SIGNAL<br>[PRESS CAPTURE]</div>
+            <div class="scan-line"></div>
+        </div>
+
+        <!-- Coordinates & Stats -->
+        <div id="data-panel" class="panel">
+            <div class="label">NAV SYSTEMS</div>
+            <div class="data-row"><span>X:</span> <span id="val-x" class="val">000</span></div>
+            <div class="data-row"><span>Y:</span> <span id="val-y" class="val">000</span></div>
+            <div class="data-row"><span>A:</span> <span id="val-a" class="val">000</span></div>
+            <div class="data-row" style="margin-top:auto; border:none; color: #ff8888;">
+                <span>STATUS:</span> <span id="val-status">ACTIVE</span>
+            </div>
+            <div class="data-row" style="border:none;">
+                <span>O2:</span> <span id="val-o2">99%</span>
+            </div>
+        </div>
+
+        <!-- Map -->
+        <div id="map-panel" class="panel">
+            <div class="label">PROXIMITY SENSORS</div>
+            <canvas id="map-view" width="200" height="200"></canvas>
+        </div>
+
+        <!-- Controls -->
+        <div id="controls-panel">
+            <button id="camera-btn" onclick="takePhoto()">CAPTURE IMAGE</button>
+            <div class="dpad">
+                <div class="d-btn d-up" id="btn-up">▲</div>
+                <div class="d-btn d-left" id="btn-left">◀</div>
+                <div class="d-btn d-down" id="btn-down">▼</div>
+                <div class="d-btn d-right" id="btn-right">▶</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        // --- GEMINI API SETUP ---
+        const apiKey = ""; // Injected at runtime
+
+        async function fetchGeminiText(prompt) {
+            if (!apiKey) {
+                console.warn("No API Key available for Gemini.");
+                return "ERR: AI NEURAL LINK SEVERED.";
+            }
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }]
+            };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) throw new Error('Gemini API Error');
+                
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
+            } catch (error) {
+                console.error("Gemini Error:", error);
+                return "ERR: DATA CORRUPTED. UNABLE TO PARSE.";
+            }
+        }
+
+        async function fetchGeminiTTS(text) {
+            if (!apiKey) return;
+            
+            // Using a low, possibly creepy voice if available, or just default
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: text }] }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: {
+                                voiceName: "Fenrir" // Deep, male voice often good for machines
+                            }
+                        }
+                    }
+                }
+            };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) throw new Error('Gemini TTS Error');
+
+                const data = await response.json();
+                const audioData = data.candidates[0].content.parts[0].inlineData.data;
+                playPCM16(audioData);
+            } catch (error) {
+                console.error("TTS Error:", error);
+            }
+        }
+        
+        // Helper to play the Raw PCM16 audio from Gemini
+        function playPCM16(base64Data) {
+            const binaryString = window.atob(base64Data);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            const int16Data = new Int16Array(bytes.buffer);
+            
+            const buffer = audioCtx.createBuffer(1, int16Data.length, 24000); // Gemini TTS is usually 24kHz
+            const channelData = buffer.getChannelData(0);
+            for (let i = 0; i < int16Data.length; i++) {
+                channelData[i] = int16Data[i] / 32768.0;
+            }
+            
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            
+            // Add some distortion/radio effect for the horror vibe
+            const gain = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = "highpass";
+            filter.frequency.value = 500;
+            
+            source.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            source.start(0);
+        }
+
+
+        // --- CONSTANTS & CONFIG ---
+        const BLOCK_SIZE = 64;
+        const MAP_SIZE = 24;
+        const FOV = Math.PI / 3;
+        const RAY_COUNT = 320; 
+        const MOVE_SPEED = 1.0;
+        const ROT_SPEED = 0.03;
+        
+        // --- STATE ---
+        let gameState = {
+            running: false,
+            x: 0,
+            y: 0,
+            angle: 0,
+            map: [], // 0=Empty, 1=Wall, 2=Anomaly
+            cameraCooldown: false,
+            foundAnomalies: 0,
+            totalAnomalies: 3
+        };
+
+        const inputs = { up: false, down: false, left: false, right: false };
+        
+        // --- AUDIO SYSTEM ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let engineOsc = null;
+        let engineGain = null;
+
+        // --- MAP GENERATION ---
+        function generateMap() {
+            let map = [];
+            for(let y=0; y<MAP_SIZE; y++) {
+                let row = [];
+                for(let x=0; x<MAP_SIZE; x++) {
+                    // Borders
+                    if(x===0 || x===MAP_SIZE-1 || y===0 || y===MAP_SIZE-1) {
+                        row.push(1);
+                    } else {
+                        if(Math.random() < 0.1) row.push(1);
+                        else row.push(0);
+                    }
+                }
+                map.push(row);
+            }
+            
+            for(let y=2; y<6; y++) for(let x=2; x<6; x++) map[y][x] = 0;
+
+            let anomaliesPlaced = 0;
+            while(anomaliesPlaced < gameState.totalAnomalies) {
+                let rx = Math.floor(Math.random() * (MAP_SIZE-4)) + 2;
+                let ry = Math.floor(Math.random() * (MAP_SIZE-4)) + 2;
+                if(map[ry][rx] === 0) {
+                    map[ry][rx] = 2; // 2 = Anomaly
+                    anomaliesPlaced++;
+                }
+            }
+            return map;
+        }
+
+        // --- INITIALIZATION ---
+        function initGame() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            gameState.map = generateMap();
+            gameState.x = 3.5 * BLOCK_SIZE;
+            gameState.y = 3.5 * BLOCK_SIZE;
+            gameState.angle = Math.PI / 4;
+            gameState.running = true;
+            
+            document.getElementById('start-screen').style.display = 'none';
+            
+            startAudio();
+            setupInputs();
+            requestAnimationFrame(gameLoop);
+            
+            log("SYSTEM INITIALIZED...");
+            log("OXYGEN LEVELS NORMAL.");
+            log("NEURAL LINK: ACTIVE.");
+
+            // ✨ Gemini TTS: Startup
+            fetchGeminiTTS("Systems online. Entering Blood Ocean. Good luck, pilot.");
+            
+            // ✨ Gemini Text: Initial flavor
+            triggerAIHallucination("startup");
+        }
+
+        // --- GEMINI LOGIC TRIGGERS ---
+        
+        async function triggerAIAnalysis(type) {
+            log("✨ UPLOADING SENSOR DATA...", true);
+            
+            const prompt = `You are the ship computer of the 'Iron Lung' submarine in a blood ocean. 
+            I have just photographed a horrific biological anomaly. 
+            Describe it in 1 sentence. Be visceral, medical, and terrifying. Do not use hashtags.`;
+            
+            const text = await fetchGeminiText(prompt);
+            log(text, true); // True = AI style
+        }
+
+        async function triggerAIHallucination(context) {
+            let promptContext = "";
+            if (context === "startup") promptContext = "We have just dived. The pressure is building.";
+            if (context === "random") promptContext = "The silence is heavy. The crew is dead. I am just a machine.";
+            if (context === "crash") promptContext = "We just hit a wall. The hull screamed.";
+
+            const prompt = `You are the possibly sentient, glitching computer of a submarine in an ocean of blood. 
+            Context: ${promptContext}
+            Write a very short (max 10 words) cryptic log entry that sounds like a glitch or a dark thought.`;
+
+            // Only fire occasionally to save API calls and keep it special
+            if (Math.random() > 0.5 || context === "startup") {
+                const text = await fetchGeminiText(prompt);
+                log(text, true);
+            }
+        }
+
+        // --- INPUT HANDLING ---
+        function setupInputs() {
+            window.addEventListener('keydown', e => {
+                if(e.key === 'w' || e.key === 'ArrowUp') inputs.up = true;
+                if(e.key === 's' || e.key === 'ArrowDown') inputs.down = true;
+                if(e.key === 'a' || e.key === 'ArrowLeft') inputs.left = true;
+                if(e.key === 'd' || e.key === 'ArrowRight') inputs.right = true;
+                if(e.key === ' ' && !gameState.cameraCooldown) takePhoto();
+            });
+            window.addEventListener('keyup', e => {
+                if(e.key === 'w' || e.key === 'ArrowUp') inputs.up = false;
+                if(e.key === 's' || e.key === 'ArrowDown') inputs.down = false;
+                if(e.key === 'a' || e.key === 'ArrowLeft') inputs.left = false;
+                if(e.key === 'd' || e.key === 'ArrowRight') inputs.right = false;
+            });
+
+            const bindBtn = (id, key) => {
+                const btn = document.getElementById(id);
+                const start = (e) => { e.preventDefault(); inputs[key] = true; btn.classList.add('active'); };
+                const end = (e) => { e.preventDefault(); inputs[key] = false; btn.classList.remove('active'); };
+                btn.addEventListener('mousedown', start);
+                btn.addEventListener('mouseup', end);
+                btn.addEventListener('touchstart', start, {passive: false});
+                btn.addEventListener('touchend', end, {passive: false});
+            };
+            
+            bindBtn('btn-up', 'up');
+            bindBtn('btn-down', 'down');
+            bindBtn('btn-left', 'left');
+            bindBtn('btn-right', 'right');
+        }
+
+        // --- PROCEDURAL AUDIO ---
+        function startAudio() {
+            engineOsc = audioCtx.createOscillator();
+            engineGain = audioCtx.createGain();
+            engineOsc.type = 'sawtooth';
+            engineOsc.frequency.value = 40;
+            engineGain.gain.value = 0.05;
+            
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 200;
+
+            engineOsc.connect(filter);
+            filter.connect(engineGain);
+            engineGain.connect(audioCtx.destination);
+            engineOsc.start();
+
+            setInterval(() => {
+                if(Math.random() > 0.6) playSound('ping');
+                if(Math.random() > 0.8) {
+                    playSound('creak');
+                    if(Math.random() > 0.7) triggerAIHallucination("random"); // Chance for AI thought
+                }
+            }, 6000);
+        }
+
+        function playSound(type) {
+            if(audioCtx.state === 'suspended') return;
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'shutter') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(1000, now + 0.2);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+                
+                setTimeout(() => {
+                    const noise = audioCtx.createOscillator();
+                    const nGain = audioCtx.createGain();
+                    noise.type = 'sawtooth';
+                    noise.frequency.value = 50;
+                    noise.connect(nGain);
+                    nGain.connect(audioCtx.destination);
+                    nGain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    nGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                    noise.start();
+                    noise.stop(audioCtx.currentTime + 0.1);
+                }, 200);
+
+            } else if (type === 'ping') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, now);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+                osc.start(now);
+                osc.stop(now + 1.5);
+            } else if (type === 'crash') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(80, now);
+                osc.frequency.linearRampToValueAtTime(40, now + 0.5);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else if (type === 'success') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(440, now); 
+                osc.frequency.setValueAtTime(554, now + 0.15); 
+                osc.frequency.setValueAtTime(659, now + 0.30); 
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 1.0);
+                osc.start(now);
+                osc.stop(now + 1.0);
+            }
+        }
+
+        // --- GAME LOOP ---
+        function gameLoop() {
+            if(gameState.running) {
+                updatePhysics();
+                updateUI();
+                drawMap();
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updatePhysics() {
+            let moved = false;
+            // Rotation
+            if(inputs.left) { gameState.angle -= ROT_SPEED; moved = true; }
+            if(inputs.right) { gameState.angle += ROT_SPEED; moved = true; }
+
+            // Movement
+            let nextX = gameState.x;
+            let nextY = gameState.y;
+
+            if(inputs.up) {
+                nextX += Math.cos(gameState.angle) * MOVE_SPEED;
+                nextY += Math.sin(gameState.angle) * MOVE_SPEED;
+                moved = true;
+            }
+            if(inputs.down) {
+                nextX -= Math.cos(gameState.angle) * MOVE_SPEED;
+                nextY -= Math.sin(gameState.angle) * MOVE_SPEED;
+                moved = true;
+            }
+
+            // Collision Check
+            let mapX = Math.floor(nextX / BLOCK_SIZE);
+            let mapY = Math.floor(nextY / BLOCK_SIZE);
+
+            if(gameState.map[mapY] && gameState.map[mapY][mapX] === 1) {
+                // Collision
+                playSound('crash');
+                
+                // ✨ Gemini TTS: Collision Warning (Throttle this)
+                if(Math.random() > 0.8) fetchGeminiTTS("Warning. Hull impact detected.");
+
+                const cont = document.getElementById('console-container');
+                cont.style.transform = `translate(${Math.random()*10-5}px, ${Math.random()*10-5}px)`;
+                setTimeout(()=> cont.style.transform = 'none', 100);
+            } else {
+                gameState.x = nextX;
+                gameState.y = nextY;
+            }
+
+            if(engineOsc) {
+                const targetFreq = moved ? 55 : 40;
+                engineOsc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.2);
+            }
+        }
+
+        // --- RAYCASTING (THE PHOTO) ---
+        function castRays() {
+            const canvas = document.getElementById('game-view');
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = '#050000';
+            ctx.fillRect(0,0, canvas.width, canvas.height);
+
+            const startAngle = gameState.angle - FOV / 2;
+            const stripWidth = canvas.width / RAY_COUNT;
+
+            let anomalySeen = false;
+
+            for(let i=0; i<RAY_COUNT; i++) {
+                let rayAngle = startAngle + (i / RAY_COUNT) * FOV;
+                
+                let dist = 0;
+                let hit = 0;
+                let step = 1; 
+                let rx = gameState.x;
+                let ry = gameState.y;
+                let maxDist = 400; 
+                
+                let cos = Math.cos(rayAngle);
+                let sin = Math.sin(rayAngle);
+
+                while(dist < maxDist && hit === 0) {
+                    rx += cos * step;
+                    ry += sin * step;
+                    dist += step;
+
+                    let mx = Math.floor(rx / BLOCK_SIZE);
+                    let my = Math.floor(ry / BLOCK_SIZE);
+
+                    if(gameState.map[my] && gameState.map[my][mx] !== undefined) {
+                        if(gameState.map[my][mx] > 0) hit = gameState.map[my][mx];
+                    } else {
+                        hit = 1; 
+                    }
+                }
+
+                if(hit > 0) {
+                    let fDist = dist * Math.cos(rayAngle - gameState.angle);
+                    let wallHeight = (BLOCK_SIZE * 300) / fDist; 
+                    let brightness = Math.max(0, 255 - (dist * 1.5));
+                    let r = brightness; 
+                    let g = brightness * 0.2; 
+                    let b = brightness * 0.2; 
+                    
+                    if(hit === 2) { 
+                         r = brightness * 0.8;
+                         g = brightness; 
+                         b = brightness * 0.8;
+                         anomalySeen = true;
+                    }
+
+                    ctx.fillStyle = `rgb(${r},${g},${b})`;
+                    ctx.fillRect(i * stripWidth, (canvas.height/2) - (wallHeight/2), stripWidth + 1, wallHeight);
+                }
+            }
+            
+            const imageData = ctx.getImageData(0,0, canvas.width, canvas.height);
+            const data = imageData.data;
+            for(let i=0; i<data.length; i+=4) {
+                const noise = (Math.random() - 0.5) * 40;
+                data[i] += noise;
+                data[i+1] += noise;
+                data[i+2] += noise;
+            }
+            ctx.putImageData(imageData, 0, 0);
+
+            return anomalySeen;
+        }
+
+        // --- CAMERA LOGIC ---
+        function takePhoto() {
+            if(gameState.cameraCooldown) return;
+
+            const btn = document.getElementById('camera-btn');
+            const view = document.getElementById('game-view');
+            const overlay = document.getElementById('viewscreen-overlay');
+            
+            gameState.cameraCooldown = true;
+            btn.disabled = true;
+            btn.innerText = "PROCESS...";
+            overlay.style.display = 'none';
+            playSound('shutter');
+
+            view.style.opacity = 1;
+            view.style.filter = "brightness(5) contrast(2)";
+            
+            const sawAnomaly = castRays();
+            
+            let px = Math.floor(gameState.x / BLOCK_SIZE);
+            let py = Math.floor(gameState.y / BLOCK_SIZE);
+            
+            let closeToAnomaly = false;
+            for(let y=py-2; y<=py+2; y++) {
+                for(let x=px-2; x<=px+2; x++) {
+                    if(gameState.map[y] && gameState.map[y][x] === 2) closeToAnomaly = true;
+                }
+            }
+
+            if(sawAnomaly && closeToAnomaly) {
+                 gameState.foundAnomalies++;
+                 log(`ANOMALY RECORDED [${gameState.foundAnomalies}/${gameState.totalAnomalies}]`);
+                 playSound('success');
+                 
+                 // ✨ Gemini TTS: Achievement
+                 fetchGeminiTTS(`Biological anomaly number ${gameState.foundAnomalies} confirmed.`);
+
+                 // ✨ Gemini Text: Description
+                 triggerAIAnalysis();
+
+                 if(gameState.foundAnomalies >= gameState.totalAnomalies) {
+                     setTimeout(() => {
+                         fetchGeminiTTS("Survey objectives complete. Ascending now.");
+                         alert("SURVEY COMPLETE. ASCENDING...");
+                     }, 2000);
+                 }
+            }
+
+            setTimeout(() => {
+                view.style.filter = "contrast(1.2) brightness(0.8) sepia(1) hue-rotate(-50deg) saturate(3) blur(0.5px)";
+            }, 100);
+
+            setTimeout(() => {
+                view.style.opacity = 0;
+                overlay.style.display = 'block';
+                gameState.cameraCooldown = false;
+                btn.disabled = false;
+                btn.innerText = "CAPTURE IMAGE";
+            }, 4000);
+        }
+
+        // --- UI UPDATES ---
+        function updateUI() {
+            document.getElementById('val-x').innerText = Math.floor(gameState.x).toString().padStart(3, '0');
+            document.getElementById('val-y').innerText = Math.floor(gameState.y).toString().padStart(3, '0');
+            let deg = Math.floor((gameState.angle * 180 / Math.PI) % 360);
+            if(deg < 0) deg += 360;
+            document.getElementById('val-a').innerText = deg.toString().padStart(3, '0');
+        }
+
+        function drawMap() {
+            const canvas = document.getElementById('map-view');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.fillStyle = '#050202';
+            ctx.fillRect(0,0,w,h);
+
+            const cx = w/2;
+            const cy = h/2;
+            const range = 8; 
+            const scale = 12; 
+
+            ctx.fillStyle = '#441111';
+            
+            const px = gameState.x;
+            const py = gameState.y;
+            const gridX = Math.floor(px / BLOCK_SIZE);
+            const gridY = Math.floor(py / BLOCK_SIZE);
+
+            for(let y = gridY - range; y <= gridY + range; y++) {
+                for(let x = gridX - range; x <= gridX + range; x++) {
+                    if(y >= 0 && y < MAP_SIZE && x >= 0 && x < MAP_SIZE) {
+                        if(gameState.map[y][x] === 1) {
+                            let dx = (x * BLOCK_SIZE) - px;
+                            let dy = (y * BLOCK_SIZE) - py;
+                            let screenX = cx + (dx / BLOCK_SIZE * scale);
+                            let screenY = cy + (dy / BLOCK_SIZE * scale);
+                            ctx.fillRect(screenX, screenY, scale, scale);
+                        }
+                    }
+                }
+            }
+
+            ctx.fillStyle = '#ff0000';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 3, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#ff0000';
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.cos(gameState.angle)*15, cy + Math.sin(gameState.angle)*15);
+            ctx.stroke();
+            
+            ctx.strokeStyle = 'rgba(50, 0, 0, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+            ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+            ctx.stroke();
+        }
+
+        function log(msg, isAI = false) {
+            const el = document.getElementById('log');
+            const line = document.createElement('div');
+            line.className = isAI ? 'log-entry log-ai' : 'log-entry';
+            line.innerText = isAI ? `> AI: ${msg}` : `> ${msg}`;
+            el.prepend(line);
+            if(el.children.length > 6) el.lastChild.remove();
+        }
+
+    </script>
+</body>
+</html>
